@@ -1,6 +1,14 @@
 # COMPOSE_PROFILES=database KONG_DATABASE=postgres docker-compose up -d
 
 version: '3.9'
+
+x-kong-config:
+  &kong-env
+  KONG_DATABASE: ${KONG_DATABASE:-off}
+  KONG_PG_DATABASE: ${KONG_PG_DATABASE:-kong}
+  KONG_PG_HOST: db
+  KONG_PG_USER: ${KONG_PG_USER:-kong}
+  KONG_PG_PASSWORD_FILE: /run/secrets/kong_postgres_password
     
 networks:
   onxp_network:
@@ -19,7 +27,12 @@ services:
       - exercise-app-1
       - exercise-app-2
       - exercise-app-3
+    extra_hosts:
+      - "rp.onxp.dev:127.0.0.1"
+      - "lb.onxp.dev:127.0.0.1"
+      - "ws.onxp.dev:127.0.0.1"
       
+  # via Kong: http://localhost:8000/exercise-app-1
   exercise-app-1:
     image: glendmaatita/exercise-app:v1.0.1
     container_name: "exercise-app-1"
@@ -28,6 +41,7 @@ services:
     networks:
       - onxp_network
 
+  # via Kong: http://localhost:8000/exercise-app-2
   exercise-app-2:
     image: glendmaatita/exercise-app:v1.0.2
     container_name: "exercise-app-2"
@@ -36,6 +50,7 @@ services:
     networks:
       - onxp_network
 
+  # via Kong: http://localhost:8000/exercise-app-3
   exercise-app-3:
     image: glendmaatita/exercise-app:v1.0.3
     container_name: "exercise-app-3"
@@ -56,7 +71,7 @@ services:
     secrets:
       - kong_postgres_password
     networks:
-      - kong-net
+      - onxp_network
     restart: on-failure
 
   kong-migrations-up:
@@ -70,9 +85,11 @@ services:
     secrets:
       - kong_postgres_password
     networks:
-      - kong-net
+      - onxp_network
     restart: on-failure
 
+  # access Dashboard: http://localhost:8002/
+  # Create Gateway services and then creates routes
   kong:
     image: "${KONG_DOCKER_TAG:-kong:latest}"
     user: "${KONG_USER:-kong}"
@@ -90,7 +107,7 @@ services:
     secrets:
       - kong_postgres_password
     networks:
-      - kong-net
+      - onxp_network
     ports:
       # The following two environment variables default to an insecure value (0.0.0.0)
       # according to the CIS Security test.
@@ -144,20 +161,9 @@ services:
     stdin_open: true
     tty: true
     networks:
-      - kong-net
+      - onxp_network
     volumes:
       - kong_data:/var/lib/postgresql/data
-  
-
-# Kong API Gateway
-
-x-kong-config:
-  &kong-env
-  KONG_DATABASE: ${KONG_DATABASE:-off}
-  KONG_PG_DATABASE: ${KONG_PG_DATABASE:-kong}
-  KONG_PG_HOST: db
-  KONG_PG_USER: ${KONG_PG_USER:-kong}
-  KONG_PG_PASSWORD_FILE: /run/secrets/kong_postgres_password
 
 volumes:
   kong_data: {}
