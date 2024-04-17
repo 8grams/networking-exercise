@@ -68,7 +68,7 @@ services:
       - exercise_network
     environment:
       - APP_PORT=3000
-      - SENTRY_DSN=http://sentry:9000
+      - SENTRY_DSN=http://glitchtip:8900
       - NODE_ENV=production
       - OTEL_URL=http://jaeger:4318/api/traces
       - LOKI_HOST=http://loki:3100
