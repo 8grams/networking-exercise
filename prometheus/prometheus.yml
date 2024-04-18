@@ -7,5 +7,3 @@ scrape_configs:
         labels:
           service: 'exercise-app'
           group: 'exercise'
-rule_files:
-  - 'alert.rules'

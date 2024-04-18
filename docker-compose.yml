@@ -1,6 +1,6 @@
 # docker-compose build
 # COMPOSE_PROFILES=database KONG_DATABASE=postgres docker-compose up -d
-
+# Create kafka topic manually: docker-compose exec kafka kafka-topics.sh --create --topic booking --partitions 1 --replication-factor 1 --bootstrap-server localhost:9092
 version: '3.9'
 
 x-kong-config:
@@ -11,16 +11,16 @@ x-kong-config:
   KONG_PG_USER: ${KONG_PG_USER:-kong}
   KONG_PG_PASSWORD_FILE: /run/secrets/kong_postgres_password
 
-x-environment:
-  &default-environment
-  DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
-  SECRET_KEY: 3jvP3KqvrkYy02Swfj02ibmg7ua2jQP4CwujDUa2x
-  PORT: 8000
-  EMAIL_URL: consolemail://
-  GLITCHTIP_DOMAIN: https://glitchtip.exercise.dev
-  DEFAULT_FROM_EMAIL: email@glitchtip.com
-  CELERY_WORKER_AUTOSCALE: "1,3"
-  CELERY_WORKER_MAX_TASKS_PER_CHILD: "10000"
+# x-environment:
+#   &default-environment
+#   DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
+#   SECRET_KEY: 3jvP3KqvrkYy02Swfj02ibmg7ua2jQP4CwujDUa2x
+#   PORT: 8000
+#   EMAIL_URL: consolemail://
+#   GLITCHTIP_DOMAIN: https://glitchtip.exercise.local
+#   DEFAULT_FROM_EMAIL: email@glitchtip.com
+#   CELERY_WORKER_AUTOSCALE: "1,3"
+#   CELERY_WORKER_MAX_TASKS_PER_CHILD: "10000"
 
 x-depends_on:
   &default-depends_on
@@ -44,21 +44,21 @@ services:
       - exercise-app-1
       - exercise-app-2
       - exercise-app-3
-      - simple-app
+      - small-app
       - micro-app
     extra_hosts:
-      - "rp.exercise.dev:127.0.0.1"
-      - "lb.exercise.dev:127.0.0.1"
-      - "ws.exercise.dev:127.0.0.1"
-      - "simple.exercise.dev:127.0.0.1"
-      - "micro.exercise.dev:127.0.0.1"
-      - "jaeger.exercise.dev:127.0.0.1"
-      - "prometheus.exercise.dev:127.0.0.1"
-      - "grafana.exercise.dev:127.0.0.1"
+      - "rp.exercise.local:127.0.0.1"
+      - "lb.exercise.local:127.0.0.1"
+      - "ws.exercise.local:127.0.0.1"
+      - "small.exercise.local:127.0.0.1"
+      - "micro.exercise.local:127.0.0.1"
+      - "jaeger.exercise.local:127.0.0.1"
+      - "prometheus.exercise.local:127.0.0.1"
+      - "grafana.exercise.local:127.0.0.1"
       
   # via Kong: http://localhost:8000/exercise-app-1
   exercise-app-1:
-    image: glendmaatita/exercise-app:v1.0.1
+    image: glendmaatita/exercise-app:revou
     container_name: "exercise-app-1"
     depends_on:
       - jaeger
@@ -68,9 +68,9 @@ services:
       - exercise_network
     environment:
       - APP_PORT=3000
-      - SENTRY_DSN=http://glitchtip:8900
+      - SENTRY_DSN=https://db167bcd5a6060643465b60d831f57d9@o4507105698643968.ingest.us.sentry.io/4507105704148992
       - NODE_ENV=production
-      - OTEL_URL=http://jaeger:4318/api/traces
+      - OTEL_URL=http://jaeger:4318/v1/traces
       - LOKI_HOST=http://loki:3100
 
   # via Kong: http://localhost:8000/exercise-app-2
@@ -167,28 +167,33 @@ services:
     security_opt:
       - no-new-privileges
 
-  # simple app
-  simple-app:
-    image: glendmaatita/simple-app:latest
-    container_name: "simple-app"
+  # small app
+  small-app:
+    image: glendmaatita/small-app:revou
+    container_name: "small-app"
     depends_on:
       - redis
       - kafka
       - jaeger
+      - micro-app
     ports:
       - "91:3000"
     networks:
       - exercise_network
     environment:
+      - NODE_ENV=production
       - TARGET_URL=http://micro-app:3000
       - APP_PORT=3000
+      - GRPC_TARGET=micro-app:50051
       - REDIS_URL=redis://redis:6379
       - KAFKA_HOST=kafka:9092
-      - OTEL_URL=http://jaeger:4318/api/traces
+      - KAFKA_TOPIC=booking
+      - REDIS_TOPIC=payment
+      - OTEL_URL=http://jaeger:4318/v1/traces
 
   # micro app
   micro-app:
-    image: glendmaatita/micro-app:latest
+    image: glendmaatita/micro-app:revou
     container_name: "micro-app"
     depends_on:
       - redis
@@ -199,10 +204,13 @@ services:
     networks:
       - exercise_network
     environment:
+      - NODE_ENV=production
       - APP_PORT=3000
       - REDIS_URL=redis://redis:6379
       - KAFKA_HOST=kafka:9092
-      - OTEL_URL=http://jaeger:4318/api/traces
+      - KAFKA_TOPIC=booking
+      - REDIS_TOPIC=payment
+      - OTEL_URL=http://jaeger:4318/v1/traces
 
   redis:
     image: redis:latest
@@ -225,6 +233,7 @@ services:
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CREATE_TOPICS="booking:1:1"
 
   jaeger:
     image: jaegertracing/all-in-one:1.42
@@ -246,9 +255,9 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - $(pwd)/prometheus":/prometheus-data
+      - ./prometheus:/prometheus-data
     command:
-      - '-config.file=/prometheus-data/prometheus.yml'
+      - '--config.file=/prometheus-data/prometheus.yml'
   
   loki:
     image: grafana/loki:latest
@@ -305,43 +314,43 @@ services:
       - kong_data:/var/lib/postgresql/data
 
   # glitchtip
-  postgres:
-    image: postgres:16
-    networks:
-      - exercise_network
-    environment:
-      POSTGRES_HOST_AUTH_METHOD: "trust"
-    restart: unless-stopped
-    volumes:
-      - glitchtip_pgdata:/var/lib/postgresql/data
-  web:
-    image: glitchtip/glitchtip
-    networks:
-      - exercise_network
-    depends_on: *default-depends_on
-    ports:
-      - "8900:8000"
-    environment: *default-environment
-    restart: unless-stopped
-    container_name: "glitchtip-web"
-    volumes: 
-      - glitchtip_uploads:/code/uploads
-  worker:
-    image: glitchtip/glitchtip
-    networks:
-      - exercise_network
-    command: ./bin/run-celery-with-beat.sh
-    depends_on: *default-depends_on
-    environment: *default-environment
-    restart: unless-stopped
-    container_name: "glitchtip-worker"
-    volumes: 
-      - glitchtip_uploads:/code/uploads
-  migrate:
-    image: glitchtip/glitchtip
-    depends_on: *default-depends_on
-    command: "./manage.py migrate"
-    environment: *default-environment
+  # postgres:
+  #   image: postgres:16
+  #   networks:
+  #     - exercise_network
+  #   environment:
+  #     POSTGRES_HOST_AUTH_METHOD: "trust"
+  #   restart: unless-stopped
+  #   volumes:
+  #     - glitchtip_pgdata:/var/lib/postgresql/data
+  # web:
+  #   image: glitchtip/glitchtip
+  #   networks:
+  #     - exercise_network
+  #   depends_on: *default-depends_on
+  #   ports:
+  #     - "8900:8000"
+  #   environment: *default-environment
+  #   restart: unless-stopped
+  #   container_name: "glitchtip-web"
+  #   volumes: 
+  #     - glitchtip_uploads:/code/uploads
+  # worker:
+  #   image: glitchtip/glitchtip
+  #   networks:
+  #     - exercise_network
+  #   command: ./bin/run-celery-with-beat.sh
+  #   depends_on: *default-depends_on
+  #   environment: *default-environment
+  #   restart: unless-stopped
+  #   container_name: "glitchtip-worker"
+  #   volumes: 
+  #     - glitchtip_uploads:/code/uploads
+  # migrate:
+  #   image: glitchtip/glitchtip
+  #   depends_on: *default-depends_on
+  #   command: "./manage.py migrate"
+  #   environment: *default-environment
     
 volumes:
   kong_data: {}
