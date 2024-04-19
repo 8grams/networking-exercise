@@ -11,6 +11,7 @@ x-kong-config:
   KONG_PG_USER: ${KONG_PG_USER:-kong}
   KONG_PG_PASSWORD_FILE: /run/secrets/kong_postgres_password
 
+# uncomment if using glitchtip instead of sentry
 # x-environment:
 #   &default-environment
 #   DATABASE_URL: postgres://postgres:postgres@postgres:5432/postgres
@@ -47,6 +48,7 @@ services:
       - small-app
       - micro-app
     extra_hosts:
+      # Add this to your /etc/hosts file 
       - "rp.exercise.local:127.0.0.1"
       - "lb.exercise.local:127.0.0.1"
       - "ws.exercise.local:127.0.0.1"
@@ -55,6 +57,7 @@ services:
       - "jaeger.exercise.local:127.0.0.1"
       - "prometheus.exercise.local:127.0.0.1"
       - "grafana.exercise.local:127.0.0.1"
+      - "kong.exercise.local:127.0.0.1"
       
   # via Kong: http://localhost:8000/exercise-app-1
   exercise-app-1:
@@ -94,6 +97,7 @@ services:
   # Kong API Gateway
   kong-migrations:
     image: "${KONG_DOCKER_TAG:-kong:latest}"
+    container_name: "kong-migrations"
     command: kong migrations bootstrap
     profiles: [ "database" ]
     depends_on:
@@ -109,6 +113,7 @@ services:
   kong-migrations-up:
     image: "${KONG_DOCKER_TAG:-kong:latest}"
     command: kong migrations up && kong migrations finish
+    container_name: "kong-migration-up"
     profiles: [ "database" ]
     depends_on:
       - db
@@ -125,6 +130,7 @@ services:
   kong:
     image: "${KONG_DOCKER_TAG:-kong:latest}"
     user: "${KONG_USER:-kong}"
+    container_name: "kong"
     environment:
       <<: *kong-env
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
@@ -313,6 +319,7 @@ services:
     volumes:
       - kong_data:/var/lib/postgresql/data
 
+  # Ucomment this to enable glitchtip
   # glitchtip
   # postgres:
   #   image: postgres:16
