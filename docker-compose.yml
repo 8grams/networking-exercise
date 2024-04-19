@@ -58,6 +58,7 @@ services:
       - "prometheus.exercise.local:127.0.0.1"
       - "grafana.exercise.local:127.0.0.1"
       - "kong.exercise.local:127.0.0.1"
+      - "kong-gateway.exercise.local:127.0.0.1"
       
   # via Kong: http://localhost:8000/exercise-app-1
   exercise-app-1:
