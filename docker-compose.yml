@@ -1,6 +1,23 @@
+# Prepare local /etc/hosts
+# 127.0.0.1       ws.exercise.local
+# 127.0.0.1       rp.exercise.local
+# 127.0.0.1       lb.exercise.local
+# 127.0.0.1       ws.exercise.local
+# 127.0.0.1       small.exercise.local
+# 127.0.0.1       micro.exercise.local
+# 127.0.0.1       jaeger.exercise.local
+# 127.0.0.1       prometheus.exercise.local
+# 127.0.0.1       grafana.exercise.local
+# 127.0.0.1       kong.exercise.local
+# 127.0.0.1       kong-gateway.exercise.local
+
 # docker-compose build
 # COMPOSE_PROFILES=database KONG_DATABASE=postgres docker-compose up -d
 # Create kafka topic manually: docker-compose exec kafka kafka-topics.sh --create --topic booking --partitions 1 --replication-factor 1 --bootstrap-server localhost:9092
+
+# Test GRPC: curl -v http://small.exercise.local/grpc
+# Test MQ Kafka: curl -v http://small.exercise.local/kafka
+# Test MQ Redis: curl -v http://small.exercise.local/bull
 version: '3.9'
 
 x-kong-config:
@@ -35,6 +52,7 @@ networks:
 services:
   nginx:
     build: ./nginx
+    container_name: "nginx"
     ports: 
       - 80:80
     networks: 
@@ -50,7 +68,7 @@ services:
     extra_hosts:
       # Add this to your /etc/hosts file 
       - "rp.exercise.local:127.0.0.1"
-      - "lb.exercise.local:127.0.0.1"
+      - "lb.exercise.local:127.0.0.1" # Test Load Balancing : http://lb.exercise.local/version
       - "ws.exercise.local:127.0.0.1"
       - "small.exercise.local:127.0.0.1"
       - "micro.exercise.local:127.0.0.1"
@@ -60,7 +78,7 @@ services:
       - "kong.exercise.local:127.0.0.1"
       - "kong-gateway.exercise.local:127.0.0.1"
       
-  # via Kong: http://localhost:8000/exercise-app-1
+  # via Kong: http://kong-gateway.exercise.local/exercise-app-1
   exercise-app-1:
     image: glendmaatita/exercise-app:revou
     container_name: "exercise-app-1"
@@ -77,7 +95,7 @@ services:
       - OTEL_URL=http://jaeger:4318/v1/traces
       - LOKI_HOST=http://loki:3100
 
-  # via Kong: http://localhost:8000/exercise-app-2
+  # via Kong: http://kong-gateway.exercise.local/exercise-app-2
   exercise-app-2:
     image: glendmaatita/exercise-app:v1.0.2
     container_name: "exercise-app-2"
@@ -86,7 +104,7 @@ services:
     networks:
       - exercise_network
 
-  # via Kong: http://localhost:8000/exercise-app-3
+  # via Kong: http://kong-gateway.exercise.local/exercise-app-3
   exercise-app-3:
     image: glendmaatita/exercise-app:v1.0.3
     container_name: "exercise-app-3"
@@ -126,7 +144,7 @@ services:
       - exercise_network
     restart: on-failure
 
-  # access Dashboard: http://localhost:8002/
+  # access Dashboard: http://kong.exercise.local/
   # Create Gateway services and then create routes
   kong:
     image: "${KONG_DOCKER_TAG:-kong:latest}"
@@ -240,7 +258,9 @@ services:
       - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
       - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - KAFKA_CREATE_TOPICS="booking:1:1"
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    volumes:
+    - kafka:/bitnami/kafka
 
   jaeger:
     image: jaegertracing/all-in-one:1.42
@@ -276,6 +296,7 @@ services:
     volumes:
       - loki-storage:/usr/local/bin/loki/data
 
+  # login -> admin:admin
   grafana:
     image: grafana/grafana:latest
     container_name: "grafana"
@@ -319,46 +340,6 @@ services:
     tty: true
     volumes:
       - kong_data:/var/lib/postgresql/data
-
-  # Ucomment this to enable glitchtip
-  # glitchtip
-  # postgres:
-  #   image: postgres:16
-  #   networks:
-  #     - exercise_network
-  #   environment:
-  #     POSTGRES_HOST_AUTH_METHOD: "trust"
-  #   restart: unless-stopped
-  #   volumes:
-  #     - glitchtip_pgdata:/var/lib/postgresql/data
-  # web:
-  #   image: glitchtip/glitchtip
-  #   networks:
-  #     - exercise_network
-  #   depends_on: *default-depends_on
-  #   ports:
-  #     - "8900:8000"
-  #   environment: *default-environment
-  #   restart: unless-stopped
-  #   container_name: "glitchtip-web"
-  #   volumes: 
-  #     - glitchtip_uploads:/code/uploads
-  # worker:
-  #   image: glitchtip/glitchtip
-  #   networks:
-  #     - exercise_network
-  #   command: ./bin/run-celery-with-beat.sh
-  #   depends_on: *default-depends_on
-  #   environment: *default-environment
-  #   restart: unless-stopped
-  #   container_name: "glitchtip-worker"
-  #   volumes: 
-  #     - glitchtip_uploads:/code/uploads
-  # migrate:
-  #   image: glitchtip/glitchtip
-  #   depends_on: *default-depends_on
-  #   command: "./manage.py migrate"
-  #   environment: *default-environment
     
 volumes:
   kong_data: {}
@@ -374,6 +355,7 @@ volumes:
   glitchtip_uploads:  
   grafana-storage:
   loki-storage:
+  kafka:
 
 secrets:
   kong_postgres_password:
